@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # Stripe Webhook Application
+  app:
+    build: .
+    container_name: stripe-webhook-app
+    ports:
+      - "3000:3000"
+    environment:
+      - STRIPE_API_KEY=${STRIPE_API_KEY}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - RAILS_ENV=production
+      - RAILS_LOG_TO_STDOUT=true
+    volumes:
+      - ./log:/app/log
+      - ./config:/app/config
+    networks:
+      - stripe-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/webhook"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  # Nginx Reverse Proxy with SSL
+  nginx:
+    image: nginx:alpine
+    container_name: stripe-webhook-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl/certs:/etc/nginx/certs:ro
+      - ./ssl/keys:/etc/nginx/keys:ro
+    networks:
+      - stripe-network
+    depends_on:
+      - app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/api/webhook"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+networks:
+  stripe-network:
+    driver: bridge
+
+volumes:
+  app-log:
